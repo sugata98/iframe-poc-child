@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Iframe (Roleplay)</title>
+  <style>
+    #visualizer {
+      width: 400px;
+      height: 100px;
+      background: #111;
+      border: 1px solid #444;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>AI Roleplay Iframe</h2>
+  <p id="micStatus">Waiting for mic info...</p>
+  <button id="startMic" disabled>Start Mic</button>
+  <canvas id="visualizer"></canvas>
+
+  <script>
+    let receivedDeviceInfo = null;
+    let animationId = null;
+    const isInIframe = window.self !== window.top;
+    console.log('isInIframe', isInIframe);
+    window.addEventListener('message', async (event) => {
+      const { type, action, deviceInfo } = event.data;
+      if (type !== 'ROLEPLAY_CONTROL' || action !== 'START') return;
+
+      receivedDeviceInfo = deviceInfo;
+      document.getElementById('micStatus').innerText = 
+        `Received from parent:\n• Label: ${deviceInfo.label}\n• Device ID: ${deviceInfo.deviceId}`;
+      document.getElementById('startMic').disabled = false;
+       // Step 3: Request specific mic
+       try{
+        // Step 1: Request general mic access first
+        const initialStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Initial mic access granted');
+        // Step 2: Enumerate devices inside iframe
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('Devices in iframe:', devices);
+        const mic = devices.find(
+          d => d.kind === 'audioinput' &&
+               d.label === receivedDeviceInfo.label
+        );
+        console.log('Mic found in iframe:', mic);
+
+        if (!mic) {
+          document.getElementById('micStatus').innerText += '\n❌ Matching mic not found in iframe context.';
+          return;
+        }
+
+        // Step 3: Request specific mic
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: mic.deviceId } }
+        });
+        document.getElementById('micStatus').innerText += `\n✅ Mic access granted via: ${mic.label}`;
+        console.log('Mic stream:', stream);
+
+        // Step 4: Start visualization
+        startVisualizer(stream);
+       } catch (err) {
+        console.error('Mic error:', err);
+        document.getElementById('micStatus').innerText += `\n❌ Mic access error: ${err.name}`;
+      }
+       
+    });
+
+    document.getElementById('startMic').addEventListener('click', async () => {
+      try {
+        // Step 1: Request general mic access first
+        const initialStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Initial mic access granted');
+
+        // Step 2: Enumerate devices inside iframe
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('Devices in iframe:', devices);
+        const mic = devices.find(
+          d => d.kind === 'audioinput' &&
+               d.label === receivedDeviceInfo.label
+        );
+        console.log('Mic found in iframe:', mic);
+
+        if (!mic) {
+          document.getElementById('micStatus').innerText += '\n❌ Matching mic not found in iframe context.';
+          return;
+        }
+
+        // Step 3: Request specific mic
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: mic.deviceId } }
+        });
+        document.getElementById('micStatus').innerText += `\n✅ Mic access granted via: ${mic.label}`;
+        console.log('Mic stream:', stream);
+
+        // Step 4: Start visualization
+        startVisualizer(stream);
+
+      } catch (err) {
+        console.error('Mic error:', err);
+        document.getElementById('micStatus').innerText += `\n❌ Mic access error: ${err.name}`;
+      }
+    });
+
+    function startVisualizer(stream) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const canvas = document.getElementById('visualizer');
+      const canvasCtx = canvas.getContext('2d');
+
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        canvasCtx.fillStyle = '#111';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = dataArray[i] / 2;
+          canvasCtx.fillStyle = 'lime';
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          x += barWidth + 1;
+        }
+      }
+      draw();
+    }
+  </script>
+</body>
+</html>
